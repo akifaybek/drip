@@ -559,26 +559,6 @@ const _addrStr = (val) => {
 
 const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const _isMissingFunctionError = (error, fnName) => {
-  const msg = String(error?.message ?? '');
-  return msg.includes('trying to invoke non-existent contract function') && msg.includes(fnName);
-};
-
-// eslint-disable-next-line no-unused-vars
-const _resolveNextStreamId = async (publicKey) => {
-  try {
-    const nextIdRaw = await readContract(publicKey, 'get_next_stream_id', []);
-    const n = Number(nextIdRaw ?? 0);
-    if (Number.isInteger(n) && n > 0) return n;
-  } catch (e) {
-    // Kontratta helper fonksiyon yoksa local fallback kullan.
-    if (!_isMissingFunctionError(e, 'get_next_stream_id')) throw e;
-  }
-
-  const local = _getLocalLastStreamId(publicKey);
-  if (local && Number.isInteger(local) && local > 0) return local + 1;
-  return null;
-};
 
 const _getLocalLastStreamId = (publicKey) => {
   if (!publicKey || typeof window === 'undefined') return null;

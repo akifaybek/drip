@@ -1,201 +1,489 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import CreateStream from './components/CreateStream';
-import StreamCard   from './components/StreamCard';
-import { connectWallet, autoConnect, readStream, shortAddr, getConfig, claimStream, cancelStream } from './stellar';
+import StreamCard from './components/StreamCard';
+import {
+  connectWallet,
+  getWalletAddress,
+  readStream,
+  shortAddr,
+  getConfig,
+  claimStream,
+  cancelStream,
+  subscribeTxStatus,
+  TX_STATUS,
+  explorerLink,
+} from './utils/stellar';
 
-const idsKey = pk => `sf:ids:${pk}`;
+const idsKey = (pk) => `drip:streamIds:${pk}`;
+
 function loadIds(pk) {
+  if (!pk) return [];
   try {
     const raw = localStorage.getItem(idsKey(pk));
-    if (raw) return JSON.parse(raw);
-    const old = localStorage.getItem(`sf:${pk}`);
-    if (old) { saveIds(pk, [old]); return [old]; }
-  } catch {}
-  return [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.map((x) => String(x)).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
 }
-function saveIds(pk, ids) { localStorage.setItem(idsKey(pk), JSON.stringify(ids)); }
 
-function DropIcon({ size = 14 }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C12 2 4 10.5 4 15a8 8 0 0016 0C20 10.5 12 2 12 2z"/></svg>;
+function saveIds(pk, ids) {
+  if (!pk) return;
+  localStorage.setItem(idsKey(pk), JSON.stringify(ids.map((x) => String(x))));
 }
-function StreamsIcon() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>;
+
+function DropIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 2C12 2 4 10.5 4 15a8 8 0 0016 0C20 10.5 12 2 12 2z" />
+    </svg>
+  );
 }
-function PlusIcon() {
-  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>;
+
+function Spinner({ size = 16 }) {
+  return (
+    <svg
+      className="animate-spin"
+      style={{ width: size, height: size }}
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+      <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
+function TxToast({ tx }) {
+  if (!tx || tx.status === TX_STATUS.IDLE) return null;
+
+  const isDone = tx.status === TX_STATUS.DONE;
+  const isError = tx.status === TX_STATUS.ERROR;
+
+  return (
+    <div className="fixed right-5 bottom-5 z-50 w-[360px] max-w-[calc(100vw-2rem)]">
+      <div
+        className={`rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur ${
+          isDone
+            ? 'border-emerald-500/30 bg-emerald-950/90 text-emerald-200'
+            : isError
+              ? 'border-red-500/30 bg-red-950/90 text-red-200'
+              : 'border-amber-500/35 bg-zinc-950/95 text-amber-100'
+        }`}
+      >
+        <div className="flex items-center gap-2 text-sm font-medium">
+          {isDone ? <span>✓</span> : isError ? <span>✕</span> : <Spinner size={13} />}
+          <span>{tx.message || tx.status}</span>
+        </div>
+        {tx.error && <p className="mt-1.5 text-xs opacity-80 break-all">{tx.error}</p>}
+        {tx.txHash && (
+          <a
+            href={explorerLink(tx.txHash)}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 block text-[11px] font-mono opacity-80 underline underline-offset-2"
+          >
+            {tx.txHash.slice(0, 16)}…{tx.txHash.slice(-8)}
+          </a>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
-  const [wallet, setWallet]     = useState(null);
-  const [page, setPage]         = useState('home');
-  const [streams, setStreams]   = useState([]);
-  const [watchId, setWatchId]   = useState('');
+  const [wallet, setWallet] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState('');
+
+  const [page, setPage] = useState('home');
+  const [streams, setStreams] = useState([]);
+  const [streamsLoading, setStreamsLoading] = useState(false);
+
+  const [watchId, setWatchId] = useState('');
   const [watchErr, setWatchErr] = useState('');
+
+  const [txState, setTxState] = useState({
+    status: TX_STATUS.IDLE,
+    message: '',
+    txHash: '',
+    error: '',
+  });
+
   const cfg = getConfig();
 
-  // Sayfa açılışında Freighter zaten yetkiliyse sessizce bağlan (popup yok)
   useEffect(() => {
-    autoConnect().then(addr => { if (addr) setWallet({ address: addr }); });
+    let active = true;
+    getWalletAddress().then((pk) => {
+      if (active && pk) setWallet(pk);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
-  async function connect() {
-    try { const addr = await connectWallet(); setWallet({ address: addr }); }
-    catch (e) { alert(e.message); }
-  }
+  useEffect(() => {
+    return subscribeTxStatus((payload) => {
+      setTxState({
+        status: payload?.status ?? TX_STATUS.IDLE,
+        message: payload?.message ?? '',
+        txHash: payload?.txHash ?? '',
+        error: payload?.error ?? '',
+      });
+    });
+  }, []);
 
   const loadAllStreams = useCallback(async (pk) => {
+    if (!pk) {
+      setStreams([]);
+      return;
+    }
+
     const ids = loadIds(pk);
-    if (!ids.length) { setStreams([]); return; }
-    const entries = await Promise.all(ids.map(async id => {
-      try { const data = await readStream(id); return { id, data, status: 'ok', error: null }; }
-      catch (e) { return { id, data: null, status: 'error', error: e.message }; }
-    }));
-    setStreams(entries);
+    if (!ids.length) {
+      setStreams([]);
+      return;
+    }
+
+    setStreamsLoading(true);
+    const rows = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const data = await readStream(pk, id);
+          return { id: String(id), status: 'ok', data, error: '' };
+        } catch (e) {
+          return {
+            id: String(id),
+            status: 'error',
+            data: null,
+            error: e?.message || 'Stream okunamadı.',
+          };
+        }
+      })
+    );
+
+    setStreams(rows);
+    setStreamsLoading(false);
   }, []);
 
-  useEffect(() => { if (wallet) loadAllStreams(wallet.address); }, [wallet, loadAllStreams]);
+  useEffect(() => {
+    if (wallet) loadAllStreams(wallet);
+    else setStreams([]);
+  }, [wallet, loadAllStreams]);
+
+  async function handleConnect() {
+    setConnectError('');
+    setConnecting(true);
+    try {
+      const pk = await connectWallet();
+      setWallet(pk);
+    } catch (e) {
+      setConnectError(e?.message || 'Cüzdan bağlanamadı.');
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  function handleSignOut() {
+    setWallet('');
+    setStreams([]);
+    setPage('home');
+    setWatchErr('');
+    setWatchId('');
+  }
 
   async function refreshSingle(id) {
-    try { const data = await readStream(id); setStreams(prev => prev.map(s => s.id===id ? {...s,data,status:'ok',error:null} : s)); }
-    catch (e) { setStreams(prev => prev.map(s => s.id===id ? {...s,status:'error',error:e.message} : s)); }
+    if (!wallet) return;
+    try {
+      const data = await readStream(wallet, id);
+      setStreams((prev) => prev.map((s) => (s.id === String(id) ? { ...s, status: 'ok', data, error: '' } : s)));
+    } catch (e) {
+      setStreams((prev) =>
+        prev.map((s) =>
+          s.id === String(id)
+            ? { ...s, status: 'error', error: e?.message || 'Yenileme başarısız.' }
+            : s
+        )
+      );
+    }
   }
+
   function handleCreated(id) {
-    if (wallet) { const ids = loadIds(wallet.address); if (!ids.includes(id)) saveIds(wallet.address,[...ids,id]); loadAllStreams(wallet.address); }
+    const streamId = String(id);
+    if (!wallet || !streamId) return;
+
+    const ids = loadIds(wallet);
+    if (!ids.includes(streamId)) saveIds(wallet, [...ids, streamId]);
+
+    loadAllStreams(wallet);
     setPage('streams');
   }
-  async function addStreamById() {
-    const id = watchId.trim(); if (!id) return; setWatchErr('');
+
+  async function addWatchById() {
+    if (!wallet) {
+      setWatchErr('Önce cüzdan bağla.');
+      return;
+    }
+
+    const id = watchId.trim();
+    if (!id) return;
+
+    setWatchErr('');
     try {
-      const data = await readStream(id);
-      if (wallet) { const ids=loadIds(wallet.address); if(!ids.includes(id)) saveIds(wallet.address,[...ids,id]); }
-      setStreams(prev => prev.find(s=>s.id===id) ? prev : [...prev,{id,data,status:'ok',error:null}]);
-      setWatchId(''); setPage('streams');
-    } catch(e) { setWatchErr('Stream not found: '+e.message); }
-  }
-  async function handleClaim(id) { await claimStream(id, wallet.address); await refreshSingle(id); }
-  async function handleCancel(id) {
-    await cancelStream(id, wallet.address);
-    if (wallet) { saveIds(wallet.address, loadIds(wallet.address).filter(x=>x!==id)); }
-    setStreams(prev => prev.filter(s=>s.id!==id));
-  }
-  function signOut() {
-    // LocalStorage'daki tüm sf: anahtarlarını temizle
-    Object.keys(localStorage).filter(k => k.startsWith('sf:')).forEach(k => localStorage.removeItem(k));
-    setWallet(null); setStreams([]); setPage('home');
+      await readStream(wallet, id);
+      const ids = loadIds(wallet);
+      if (!ids.includes(id)) saveIds(wallet, [...ids, id]);
+      setWatchId('');
+      setPage('streams');
+      await loadAllStreams(wallet);
+    } catch (e) {
+      setWatchErr(e?.message || 'Stream bulunamadı.');
+    }
   }
 
-  const sb='#0d0d1a', bc='#1a1a2e';
-  const blueBtn = { background:'linear-gradient(135deg,#2563eb 0%,#4f46e5 100%)' };
+  async function onClaim(id) {
+    if (!wallet) return;
+    await claimStream(wallet, id);
+    await refreshSingle(id);
+  }
+
+  async function onCancel(id) {
+    if (!wallet) return;
+    await cancelStream(wallet, id);
+    const ids = loadIds(wallet).filter((x) => x !== String(id));
+    saveIds(wallet, ids);
+    await loadAllStreams(wallet);
+  }
+
+  const stats = useMemo(() => {
+    const total = streams.length;
+    const healthy = streams.filter((s) => s.status === 'ok' && s.data).length;
+    const active = streams.filter((s) => s.status === 'ok' && s.data?.active).length;
+    return { total, healthy, active };
+  }, [streams]);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{background:'#080810'}}>
-      <aside className="flex flex-col flex-shrink-0 w-[260px]" style={{background:sb,borderRight:`1px solid ${bc}`}}>
-        <div className="flex items-center gap-2.5 px-5 h-[52px]" style={{borderBottom:`1px solid ${bc}`}}>
-          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-900/40"><DropIcon size={13}/></div>
-          <span className="text-[15px] font-semibold tracking-tight text-white">Drip</span>
-        </div>
-        <nav className="flex-1 px-3 py-3 flex flex-col gap-0.5">
-          <button onClick={()=>setPage('streams')} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] w-full text-left transition-colors ${page==='streams'?'bg-blue-600/10 border border-blue-500/20 text-blue-400':'text-[#666] hover:text-[#aaa] hover:bg-white/[0.04] border border-transparent'}`}>
-            <StreamsIcon/> Streams
-          </button>
-          <button onClick={()=>{ if(wallet) setPage('create'); else connect(); }} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] w-full text-left transition-colors mt-0.5 ${page==='create'?'bg-blue-600/10 border border-blue-500/20 text-blue-400':'text-[#666] hover:text-[#aaa] hover:bg-white/[0.04] border border-transparent'}`}>
-            <PlusIcon/> New stream
-          </button>
-        </nav>
-        <div className="px-4 pb-4 pt-2" style={{borderTop:`1px solid ${bc}`}}>
-          {wallet ? (
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"/>
-                <span className="text-[12px] text-[#888] font-mono truncate">{shortAddr(wallet.address)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#555] uppercase tracking-widest">{cfg.network==='testnet'?'TESTNET':'MAINNET'}</span>
-                <button onClick={signOut} className="text-[11px] text-[#444] hover:text-[#888]">Sign out</button>
-              </div>
+    <div className="min-h-screen bg-[#070707] text-zinc-100">
+      <TxToast tx={txState} />
+
+      <div className="flex min-h-screen">
+        <aside className="w-[270px] border-r border-amber-500/15 bg-[#0d0d0d]">
+          <div className="h-16 px-5 flex items-center border-b border-amber-500/15">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-600 text-black flex items-center justify-center shadow-lg shadow-amber-500/30">
+              <DropIcon />
             </div>
-          ) : <button onClick={connect} className="w-full text-[12px] text-[#555] hover:text-[#999] py-1.5">Connect wallet</button>}
-        </div>
-      </aside>
+            <div className="ml-3">
+              <p className="text-[18px] font-semibold tracking-tight">Drip</p>
+              <p className="text-[11px] text-amber-300/70">Payroll on Stellar</p>
+            </div>
+          </div>
 
-      <main className="flex-1 overflow-y-auto relative">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-8 h-[52px]" style={{background:'rgba(8,8,16,0.85)',backdropFilter:'blur(12px)',borderBottom:`1px solid ${bc}`}}>
-          <h1 className="text-[14px] font-semibold text-white">
-            {page==='home'&&'Dashboard'}{page==='create'&&'New stream'}{page==='streams'&&'Streams'}
-          </h1>
-          {wallet && <button onClick={()=>setPage('create')} className="flex items-center gap-1.5 h-7 px-3 rounded-lg text-[12px] font-medium text-white hover:opacity-90 shadow-lg shadow-blue-900/30" style={blueBtn}><PlusIcon/> New stream</button>}
-        </div>
+          <nav className="p-3 space-y-1">
+            {[
+              { id: 'home', label: 'Dashboard' },
+              { id: 'streams', label: 'Streams' },
+              { id: 'create', label: 'New stream' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  if (!wallet && item.id !== 'home') {
+                    handleConnect();
+                    return;
+                  }
+                  setPage(item.id);
+                }}
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-colors border ${
+                  page === item.id
+                    ? 'bg-amber-500/15 border-amber-400/40 text-amber-200'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.03]'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
 
-        <div className="px-8 py-8 max-w-[820px] mx-auto">
-          {page==='home' && (
-            <div className="relative min-h-[calc(100vh-120px)] flex flex-col items-center justify-center text-center">
-              <div className="absolute inset-0 hero-glow pointer-events-none"/>
-              <div className="relative z-10 flex flex-col items-center">
-                <div className="fade-up mb-8">
-                  <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center shadow-2xl shadow-blue-900/50"><DropIcon size={28}/></div>
-                </div>
-                <h1 className="fade-up-1 text-[46px] font-bold tracking-tight leading-none mb-4"
-                    style={{background:'linear-gradient(135deg,#fff 40%,#93c5fd 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
-                  Drip
-                </h1>
-                <p className="fade-up-1 text-[18px] text-[#777] mb-3 font-medium">DAO payroll, drop by drop.</p>
-                <p className="fade-up-2 text-[14px] text-[#4a4a5a] leading-relaxed mb-10 max-w-[360px] mx-auto">
-                  Lock USDC in a trustless on-chain escrow. Recipients claim each period as they earn it — no middlemen, no delays.
-                </p>
-                <div className="fade-up-2 flex flex-col items-center gap-3">
-                  <button onClick={wallet?()=>setPage('create'):connect} className="flex items-center gap-2 h-11 px-7 rounded-xl text-[14px] font-semibold text-white shadow-xl shadow-blue-900/40 hover:opacity-90" style={blueBtn}>
-                    <PlusIcon/>{wallet?'Create a stream':'Connect wallet'}
+          <div className="px-4 py-4 mt-auto border-t border-amber-500/15">
+            {wallet ? (
+              <>
+                <p className="text-xs text-zinc-400 font-mono truncate">{shortAddr(wallet, 10, 8)}</p>
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-[10px] uppercase tracking-widest text-amber-300/70">{cfg.network}</span>
+                  <button onClick={handleSignOut} className="text-xs text-zinc-400 hover:text-zinc-200">
+                    Sign out
                   </button>
-                  {wallet && <button onClick={()=>setPage('streams')} className="text-[13px] text-[#444] hover:text-[#777]">View my streams →</button>}
                 </div>
-                <div className="fade-up-3 flex items-center justify-center gap-3 mt-12 flex-wrap">
-                  {['Soroban smart contract','USDC on Stellar','Trustless escrow','Freighter wallet'].map(f=>(
-                    <span key={f} className="text-[11px] px-3 py-1 rounded-full text-[#555]" style={{background:'rgba(255,255,255,0.04)',border:'1px solid #1a1a2e'}}>{f}</span>
+              </>
+            ) : (
+              <button
+                onClick={handleConnect}
+                disabled={connecting}
+                className="w-full h-10 rounded-xl bg-amber-500 text-black text-sm font-semibold hover:bg-amber-400 disabled:opacity-50"
+              >
+                {connecting ? 'Connecting…' : 'Connect wallet'}
+              </button>
+            )}
+
+            {connectError && <p className="mt-2 text-xs text-red-300">{connectError}</p>}
+          </div>
+        </aside>
+
+        <main className="flex-1">
+          <header className="h-16 px-8 flex items-center justify-between border-b border-amber-500/15 bg-[#0a0a0a]/95 backdrop-blur">
+            <h1 className="text-[15px] font-semibold tracking-wide">
+              {page === 'home' ? 'Dashboard' : page === 'create' ? 'Create stream' : 'Streams'}
+            </h1>
+            {wallet && (
+              <button
+                onClick={() => setPage('create')}
+                className="h-10 px-4 rounded-xl bg-amber-500 text-black text-sm font-semibold hover:bg-amber-400"
+              >
+                + New stream
+              </button>
+            )}
+          </header>
+
+          <section className="p-8 max-w-[980px] mx-auto">
+            {page === 'home' && (
+              <div className="space-y-6">
+                <div className="rounded-3xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 via-zinc-900 to-black p-10">
+                  <h2 className="text-4xl font-semibold tracking-tight text-amber-100">Drip</h2>
+                  <p className="mt-3 max-w-[560px] text-zinc-300 leading-relaxed">
+                    USDC maaş akışlarını profesyonel bir panelden yönet. Fonları kontratta kilitle,
+                    çalışanlar periyot doldukça güvenli şekilde claim etsin.
+                  </p>
+                  <div className="mt-7 flex gap-3">
+                    <button
+                      onClick={wallet ? () => setPage('create') : handleConnect}
+                      className="h-11 px-6 rounded-xl bg-amber-500 text-black text-sm font-semibold hover:bg-amber-400"
+                    >
+                      {wallet ? 'Create stream' : 'Connect wallet'}
+                    </button>
+                    {wallet && (
+                      <button
+                        onClick={() => setPage('streams')}
+                        className="h-11 px-6 rounded-xl border border-amber-500/30 text-amber-100 hover:bg-amber-500/10"
+                      >
+                        View streams
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  {[
+                    { label: 'Tracked streams', value: stats.total },
+                    { label: 'Readable', value: stats.healthy },
+                    { label: 'Active', value: stats.active },
+                  ].map((s) => (
+                    <div key={s.label} className="rounded-2xl border border-amber-500/20 bg-[#0e0e0e] p-5">
+                      <p className="text-xs uppercase tracking-wider text-zinc-500">{s.label}</p>
+                      <p className="mt-2 text-3xl font-bold text-amber-200">{s.value}</p>
+                    </div>
                   ))}
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {page==='create' && (wallet
-            ? <CreateStream wallet={wallet} onCreated={handleCreated}/>
-            : <div className="flex flex-col items-center justify-center py-32 gap-4">
-                <p className="text-[#555]">Connect your wallet first</p>
-                <button onClick={connect} className="h-9 px-5 rounded-lg text-[13px] font-medium text-white" style={blueBtn}>Connect wallet</button>
+            {page === 'create' && (
+              <div className="rounded-2xl border border-amber-500/20 bg-[#101010] p-6">
+                {wallet ? (
+                  <CreateStream walletAddress={wallet} onCreated={handleCreated} />
+                ) : (
+                  <div className="py-16 text-center">
+                    <p className="text-zinc-400 mb-4">Create stream için önce cüzdan bağla.</p>
+                    <button
+                      onClick={handleConnect}
+                      className="h-10 px-5 rounded-xl bg-amber-500 text-black text-sm font-semibold"
+                    >
+                      Connect wallet
+                    </button>
+                  </div>
+                )}
               </div>
-          )}
+            )}
 
-          {page==='streams' && (
-            <div>
-              <div className="rounded-xl p-4 mb-6 flex items-center gap-3" style={{background:'#0d0d1a',border:'1px solid #1e1e30'}}>
-                <input value={watchId} onChange={e=>{setWatchId(e.target.value);setWatchErr('');}} onKeyDown={e=>e.key==='Enter'&&addStreamById()} placeholder="Watch stream by ID…" className="flex-1 bg-transparent text-[13px] outline-none text-white" style={{'--tw-placeholder-color':'#333'}}/>
-                <button onClick={addStreamById} className="h-7 px-4 rounded-lg text-[12px] font-medium text-white hover:opacity-80" style={blueBtn}>Watch</button>
+            {page === 'streams' && (
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-amber-500/20 bg-[#101010] p-4 flex gap-3 items-center">
+                  <input
+                    value={watchId}
+                    onChange={(e) => {
+                      setWatchId(e.target.value);
+                      setWatchErr('');
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && addWatchById()}
+                    placeholder="Stream ID ekle (u64)…"
+                    className="flex-1 h-10 rounded-xl border border-amber-500/15 bg-black/40 px-3 text-sm outline-none focus:border-amber-400/60"
+                  />
+                  <button
+                    onClick={addWatchById}
+                    className="h-10 px-4 rounded-xl bg-amber-500 text-black text-sm font-semibold hover:bg-amber-400"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {watchErr && <p className="text-sm text-red-300 -mt-2">{watchErr}</p>}
+
+                {!wallet ? (
+                  <div className="rounded-2xl border border-amber-500/15 bg-[#101010] p-12 text-center">
+                    <p className="text-zinc-400 mb-4">Streams için cüzdan bağlantısı gerekiyor.</p>
+                    <button
+                      onClick={handleConnect}
+                      className="h-10 px-5 rounded-xl bg-amber-500 text-black text-sm font-semibold"
+                    >
+                      Connect wallet
+                    </button>
+                  </div>
+                ) : streamsLoading ? (
+                  <div className="py-12 flex justify-center text-amber-300">
+                    <Spinner size={20} />
+                  </div>
+                ) : streams.length === 0 ? (
+                  <div className="rounded-2xl border border-amber-500/15 bg-[#101010] p-12 text-center">
+                    <p className="text-zinc-400 mb-4">Henüz stream yok.</p>
+                    <button
+                      onClick={() => setPage('create')}
+                      className="h-10 px-5 rounded-xl bg-amber-500 text-black text-sm font-semibold"
+                    >
+                      Create first stream
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {streams.map((row) =>
+                      row.status === 'error' ? (
+                        <div
+                          key={row.id}
+                          className="rounded-2xl border border-red-500/30 bg-red-900/10 p-4 text-sm text-red-200"
+                        >
+                          <p className="font-mono">#{row.id}</p>
+                          <p className="mt-1 text-red-300/90">{row.error}</p>
+                        </div>
+                      ) : (
+                        <StreamCard
+                          key={row.id}
+                          streamId={row.id}
+                          stream={row.data}
+                          walletAddress={wallet}
+                          onClaim={() => onClaim(row.id)}
+                          onCancel={() => onCancel(row.id)}
+                          onRefresh={() => refreshSingle(row.id)}
+                        />
+                      )
+                    )}
+                  </div>
+                )}
               </div>
-              {watchErr && <p className="text-red-400 text-[12px] mb-4 -mt-2">{watchErr}</p>}
-              {!wallet ? (
-                <div className="flex flex-col items-center py-32 gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-600/10 flex items-center justify-center text-blue-400"><DropIcon size={20}/></div>
-                  <p className="text-[#555]">Connect wallet to view your streams</p>
-                  <button onClick={connect} className="h-9 px-5 rounded-lg text-[13px] font-medium text-white" style={blueBtn}>Connect wallet</button>
-                </div>
-              ) : streams.length===0 ? (
-                <div className="flex flex-col items-center py-28 gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-600/10 flex items-center justify-center text-blue-400"><DropIcon size={20}/></div>
-                  <p className="text-[#555]">No streams yet</p>
-                  <button onClick={()=>setPage('create')} className="h-9 px-5 rounded-lg text-[13px] font-medium text-white" style={blueBtn}>Create stream</button>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {streams.map(s=>s.status==='error'
-                    ? <div key={s.id} className="rounded-xl p-4 text-[13px] text-red-400" style={{background:'#0d0d1a',border:'1px solid rgba(239,68,68,0.2)'}}>{s.id.slice(0,12)}… {s.error}</div>
-                    : <StreamCard key={s.id} streamId={s.id} stream={s.data} wallet={wallet} onClaim={()=>handleClaim(s.id)} onCancel={()=>handleCancel(s.id)} onRefresh={()=>refreshSingle(s.id)}/>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </main>
+            )}
+          </section>
+        </main>
+      </div>
     </div>
   );
 }

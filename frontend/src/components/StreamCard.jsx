@@ -1,338 +1,178 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  cancelStream,
-  claimStream,
-  explorerLink,
-  formatTokenAmount,
-  readClaimable,
-  shortAddr,
-  parseI128ToBigInt,
-} from '../utils/stellar';
-import { Spinner } from '../App.jsx';
+import { useMemo, useState } from 'react';
+import { formatTokenAmount, parseI128ToBigInt, shortAddr } from '../utils/stellar';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Countdown hook — counts down to a unix timestamp, updates every second
-// ─────────────────────────────────────────────────────────────────────────────
-function useCountdown(targetTs) {
-  const [text, setText] = useState('');
-  const [ready, setReady] = useState(false); // true when next claim is due (diff ≤ 0)
-
-  useEffect(() => {
-    if (!targetTs) { setText(''); setReady(false); return; }
-
-    const update = () => {
-      const diff = targetTs - Math.floor(Date.now() / 1000);
-      if (diff <= 0) {
-        setText('Available now');
-        setReady(true);
-        return;
-      }
-      setReady(false);
-      const d = Math.floor(diff / 86400);
-      const h = Math.floor((diff % 86400) / 3600);
-      const m = Math.floor((diff % 3600) / 60);
-      const s = diff % 60;
-      if (d > 0)      setText(`${d}d ${h}h ${m}m`);
-      else if (h > 0) setText(`${h}h ${m}m ${s}s`);
-      else            setText(`${m}m ${s}s`);
-    };
-
-    update();
-    const t = setInterval(update, 1000);
-    return () => clearInterval(t);
-  }, [targetTs]);
-
-  return { text, ready };
+function ConfirmDialog({ open, onClose, onConfirm }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-zinc-950 p-5">
+        <h4 className="text-lg font-semibold text-red-200">Stream iptal edilsin mi?</h4>
+        <p className="mt-2 text-sm text-zinc-300">Kalan bakiye işverene iade edilir ve stream pasife düşer.</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="h-10 px-4 rounded-xl border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+          >
+            Vazgeç
+          </button>
+          <button
+            onClick={onConfirm}
+            className="h-10 px-4 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-500"
+          >
+            Evet, iptal et
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-export default function StreamCard({ stream, streamId, walletAddress, onRefresh }) {
-  const [claimable,   setClaimable]  = useState(0n);
-  const [actionState, setAction]    = useState({ status: 'idle', error: '' });
-  const [lastTx,      setLastTx]    = useState('');
+export default function StreamCard({
+  streamId,
+  stream,
+  walletAddress,
+  onClaim,
+  onCancel,
+  onRefresh,
+}) {
+  const [loading, setLoading] = useState('');
+  const [error, setError] = useState('');
+  const [cancelOpen, setCancelOpen] = useState(false);
 
-  const isEmployer = walletAddress === stream?.employer;
-  const isEmployee = walletAddress === stream?.employee;
+  const employer = stream?.employer || '';
+  const employee = stream?.employee || '';
 
-  // ── Derived ───────────────────────────────────────────────────────────────
-  const total     = parseI128ToBigInt(stream?.totalAmount   ?? 0);
-  const claimed   = parseI128ToBigInt(stream?.claimedAmount ?? 0);
-  const remaining = total > claimed ? total - claimed : 0n;
-  const pct       = total > 0n ? Number((claimed * 1000n) / total) / 10 : 0;
+  const amountPerPeriod = parseI128ToBigInt(stream?.amountPerPeriod ?? 0n);
+  const totalAmount = parseI128ToBigInt(stream?.totalAmount ?? 0n);
+  const claimedAmount = parseI128ToBigInt(stream?.claimedAmount ?? 0n);
+  const remaining = totalAmount > claimedAmount ? totalAmount - claimedAmount : 0n;
 
-  const intervalDays = useMemo(() => {
-    const s = Number(stream?.intervalSeconds ?? 0n);
-    return s ? Math.round(s / 86400) : 0;
-  }, [stream]);
+  const isEmployer = walletAddress === employer;
+  const isEmployee = walletAddress === employee;
+  const active = Boolean(stream?.active);
 
-  const startDate = useMemo(() => {
-    const ts = Number(stream?.startTime ?? 0n);
-    return ts ? new Date(ts * 1000).toLocaleDateString('en-US', {
-      year: 'numeric', month: 'short', day: 'numeric',
-    }) : '—';
-  }, [stream]);
+  const progress = useMemo(() => {
+    if (totalAmount <= 0n) return 0;
+    return Math.min(100, Number((claimedAmount * 10000n) / totalAmount) / 100);
+  }, [claimedAmount, totalAmount]);
 
-  const lastClaimDate = useMemo(() => {
-    const ts = Number(stream?.lastClaimTime ?? 0n);
-    return ts && claimed > 0n
-      ? new Date(ts * 1000).toLocaleDateString('en-US', {
-          year: 'numeric', month: 'short', day: 'numeric',
-        })
-      : '—';
-  }, [stream, claimed]);
-
-  // ── Next claim timestamp ──────────────────────────────────────────────────
-  const nextClaimTs = useMemo(() => {
-    const start    = Number(stream?.startTime      ?? 0n);
-    const interval = Number(stream?.intervalSeconds ?? 0n);
-    const lastClaim= Number(stream?.lastClaimTime  ?? 0n);
-    if (!start || !interval) return null;
-    const base = lastClaim > 0 ? lastClaim : start;
-    return base + interval;
-  }, [stream]);
-
-  const { text: countdownText, ready: claimReady } = useCountdown(
-    stream?.active ? nextClaimTs : null
-  );
-
-  // ── Claimable ─────────────────────────────────────────────────────────────
-  const refreshClaimable = useCallback(async () => {
-    if (!walletAddress || streamId == null) return;
+  async function doClaim() {
+    setLoading('claim');
+    setError('');
     try {
-      const v = await readClaimable(walletAddress, streamId);
-      setClaimable(parseI128ToBigInt(v));
-    } catch { setClaimable(0n); }
-  }, [walletAddress, streamId]);
-
-  useEffect(() => {
-    refreshClaimable();
-    const t = setInterval(refreshClaimable, 30_000);
-    return () => clearInterval(t);
-  }, [refreshClaimable]);
-
-  // ── Actions ───────────────────────────────────────────────────────────────
-  const onClaim = async () => {
-    setAction({ status: 'loading', error: '' });
-    try {
-      const tx = await claimStream(walletAddress, streamId);
-      setLastTx(tx?.txHash ?? '');
-      await Promise.all([onRefresh?.(), refreshClaimable()]);
-      setAction({ status: 'success', error: '' });
-    } catch (e) {
-      setAction({ status: 'error', error: e.message || 'Claim failed.' });
-    }
-  };
-
-  const onCancel = async () => {
-    if (!window.confirm('Cancel this stream? Remaining USDC will be returned to you.')) return;
-    setAction({ status: 'loading', error: '' });
-    try {
-      const tx = await cancelStream(walletAddress, streamId);
-      setLastTx(tx?.txHash ?? '');
+      await onClaim?.();
       await onRefresh?.();
-      setAction({ status: 'success', error: '' });
     } catch (e) {
-      setAction({ status: 'error', error: e.message || 'Cancel failed.' });
+      setError(e?.message || 'Claim başarısız.');
+    } finally {
+      setLoading('');
     }
-  };
+  }
 
-  const busy = actionState.status === 'loading';
+  async function doCancel() {
+    setLoading('cancel');
+    setError('');
+    try {
+      await onCancel?.();
+      setCancelOpen(false);
+    } catch (e) {
+      setError(e?.message || 'Cancel başarısız.');
+    } finally {
+      setLoading('');
+    }
+  }
 
   return (
-    <div className="rounded-xl border border-[#252525] bg-[#111111] overflow-hidden">
+    <>
+      <ConfirmDialog open={cancelOpen} onClose={() => setCancelOpen(false)} onConfirm={doCancel} />
 
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#222]">
-        <div className="flex items-center gap-2.5">
-          <StatusPill active={stream?.active} />
-          {streamId != null && (
-            <span className="text-[11px] font-mono text-[#555] num">#{streamId}</span>
-          )}
-        </div>
-        <button
-          onClick={onRefresh} disabled={busy}
-          className="text-[11px] text-[#888] hover:text-[#888] transition-colors flex items-center gap-1.5 disabled:opacity-40"
-        >
-          <RefreshIcon /> Refresh
-        </button>
-      </div>
-
-      {/* ── Employer → Employee ─────────────────────────────────────────── */}
-      <div className="px-5 py-4 border-b border-[#222] flex items-center gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">Employer</p>
-          <p className="font-mono text-[12px] text-[#888] truncate">{shortAddr(stream?.employer, 8, 6)}</p>
-        </div>
-        <ArrowRight />
-        <div className="flex-1 min-w-0 text-right">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">Employee</p>
-          <p className="font-mono text-[12px] text-[#888] truncate">{shortAddr(stream?.employee, 8, 6)}</p>
-        </div>
-      </div>
-
-      {/* ── Progress ────────────────────────────────────────────────────── */}
-      <div className="px-5 py-4 border-b border-[#222]">
-        <div className="flex items-end justify-between mb-2.5">
+      <article className="rounded-2xl border border-amber-500/20 bg-[#101010] overflow-hidden">
+        <header className="px-5 py-3.5 border-b border-amber-500/15 flex items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">Progress</p>
-            <p className="text-[13px] font-medium text-[#e8e8eb] num">
-              {formatTokenAmount(claimed)}
-              <span className="text-[#888] font-normal"> / {formatTokenAmount(total)} USDC</span>
-            </p>
+            <p className="text-xs text-zinc-500">Stream ID</p>
+            <p className="font-mono text-sm text-zinc-200">{String(streamId)}</p>
           </div>
-          <span className="text-[12px] text-[#888] num">{pct.toFixed(1)}%</span>
-        </div>
-        <div className="h-1 rounded-full bg-[#1a1a1a] overflow-hidden">
-          <div
-            className="h-full rounded-full bg-white/60 transition-all duration-700"
-            style={{ width: `${Math.min(pct, 100)}%` }}
-          />
-        </div>
-      </div>
 
-      {/* ── Countdown (employee only, active stream) ─────────────────────── */}
-      {isEmployee && stream?.active && nextClaimTs && (
-        <div className={`px-5 py-3 border-b border-[#222] flex items-center justify-between ${
-          claimReady ? 'bg-[#0d1a0d]' : ''
-        }`}>
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-0.5">
-              {claimReady ? 'Next claim' : 'Next claim in'}
-            </p>
-            <p className={`text-[13px] font-semibold num tracking-tight ${
-              claimReady ? 'text-emerald-400' : 'text-[#888]'
-            }`}>
-              {claimReady ? 'Available now' : countdownText}
-            </p>
-          </div>
-          {claimReady && (
-            <span className="text-[10px] font-medium text-emerald-400/60 uppercase tracking-wider">
-              {formatTokenAmount(stream?.amountPerPeriod)} USDC ready
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* ── Details ─────────────────────────────────────────────────────── */}
-      <div className="px-5 py-4 border-b border-[#222] grid grid-cols-2 gap-x-6 gap-y-3">
-        <Stat label="Per period"  value={`${formatTokenAmount(stream?.amountPerPeriod)} USDC`} />
-        <Stat label="Interval"    value={`${intervalDays} days`} />
-        <Stat label="Remaining"   value={`${formatTokenAmount(remaining)} USDC`} />
-        <Stat label="Started"     value={startDate} />
-        <Stat label="Last claim"  value={lastClaimDate} />
-      </div>
-
-      {/* ── Claimable / Cancel ──────────────────────────────────────────── */}
-      <div className="px-5 py-4">
-        {isEmployee && (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">
-                Available to claim
-              </p>
-              <p className={`text-[22px] font-semibold num tracking-tight leading-none ${
-                claimable > 0n ? 'text-[#e8e8eb]' : 'text-[#555]'
-              }`}>
-                {formatTokenAmount(claimable)}
-                <span className="text-[13px] font-normal text-[#888] ml-1.5">USDC</span>
-              </p>
-            </div>
-            <button
-              onClick={onClaim}
-              disabled={busy || !stream?.active || claimable <= 0n}
-              className="flex items-center gap-2 h-9 px-5 bg-white hover:bg-[#e8e8e8] active:bg-[#d4d4d4] disabled:opacity-25 disabled:cursor-not-allowed rounded-lg text-[13px] font-semibold text-[#0c0c0c] transition-colors"
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-2.5 py-1 text-xs rounded-full border ${
+                active
+                  ? 'border-emerald-500/35 text-emerald-200 bg-emerald-500/10'
+                  : 'border-zinc-700 text-zinc-300 bg-zinc-800/40'
+              }`}
             >
-              {busy ? <Spinner size={13} color="#333" /> : null}
-              Claim
+              {active ? 'Active' : 'Inactive'}
+            </span>
+            <button
+              onClick={onRefresh}
+              className="h-8 px-3 rounded-lg border border-amber-500/20 text-amber-100 hover:bg-amber-500/10 text-xs"
+            >
+              Refresh
             </button>
           </div>
-        )}
+        </header>
 
-        {isEmployer && (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">
-                Remaining in escrow
-              </p>
-              <p className="text-[22px] font-semibold num tracking-tight leading-none text-[#e8e8eb]">
-                {formatTokenAmount(remaining)}
-                <span className="text-[13px] font-normal text-[#888] ml-1.5">USDC</span>
-              </p>
+        <div className="p-5 space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <Info label="Employer" value={shortAddr(employer, 10, 8)} mono />
+            <Info label="Employee" value={shortAddr(employee, 10, 8)} mono />
+            <Info label="Per period" value={`${formatTokenAmount(amountPerPeriod)} USDC`} />
+            <Info label="Total" value={`${formatTokenAmount(totalAmount)} USDC`} />
+            <Info label="Claimed" value={`${formatTokenAmount(claimedAmount)} USDC`} />
+            <Info label="Remaining" value={`${formatTokenAmount(remaining)} USDC`} />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-zinc-500 uppercase tracking-wider">Progress</span>
+              <span className="text-amber-200 font-semibold">{progress.toFixed(2)}%</span>
             </div>
-            {stream?.active && (
+            <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 to-yellow-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            {isEmployee && (
               <button
-                onClick={onCancel} disabled={busy}
-                className="flex items-center gap-2 h-9 px-5 rounded-lg border border-[#3a1818] bg-[#1a0e0e] hover:bg-[#220e0e] disabled:opacity-30 disabled:cursor-not-allowed text-[13px] font-medium text-red-400 transition-colors"
+                onClick={doClaim}
+                disabled={!active || loading === 'claim'}
+                className="h-10 px-4 rounded-xl bg-amber-500 text-black text-sm font-semibold hover:bg-amber-400 disabled:opacity-50"
               >
-                {busy ? <Spinner size={13} /> : null}
-                Cancel stream
+                {loading === 'claim' ? 'Claiming…' : 'Claim'}
+              </button>
+            )}
+
+            {isEmployer && (
+              <button
+                onClick={() => setCancelOpen(true)}
+                disabled={!active || loading === 'cancel'}
+                className="h-10 px-4 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-500 disabled:opacity-50"
+              >
+                {loading === 'cancel' ? 'Cancelling…' : 'Cancel stream'}
               </button>
             )}
           </div>
-        )}
 
-        {!isEmployee && !isEmployer && (
-          <p className="text-[12px] text-[#555]">Read-only view</p>
-        )}
-      </div>
-
-      {/* ── Footer ──────────────────────────────────────────────────────── */}
-      {(actionState.error || lastTx) && (
-        <div className="border-t border-[#222] px-5 py-3 space-y-1.5">
-          {actionState.error && (
-            <p className="text-[11px] text-red-400 break-all leading-relaxed">{actionState.error}</p>
-          )}
-          {lastTx && (
-            <a href={explorerLink(lastTx)} target="_blank" rel="noreferrer"
-              className="text-[11px] font-mono text-[#444] hover:text-[#888] transition-colors flex items-center gap-1">
-              Last tx: {lastTx.slice(0, 12)}…{lastTx.slice(-8)}
-              <span className="text-[10px]">↗</span>
-            </a>
+          {error && (
+            <div className="rounded-xl border border-red-500/30 bg-red-900/15 px-4 py-3 text-sm text-red-200">
+              {error}
+            </div>
           )}
         </div>
-      )}
+      </article>
+    </>
+  );
+}
+
+function Info({ label, value, mono = false }) {
+  return (
+    <div className="rounded-xl border border-amber-500/15 bg-black/35 px-3 py-2.5">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">{label}</p>
+      <p className={`mt-1 text-sm text-zinc-100 ${mono ? 'font-mono' : ''}`}>{value}</p>
     </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────────────────────────────
-function StatusPill({ active }) {
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
-      active
-        ? 'bg-[#0d1a0d] border-[#1e3a1e] text-emerald-400'
-        : 'bg-[#181818] border-[#222] text-[#444]'
-    }`}>
-      <span className={`w-1 h-1 rounded-full flex-shrink-0 ${active ? 'bg-emerald-400' : 'bg-[#3a3a3a]'}`} />
-      {active ? 'Active' : 'Inactive'}
-    </span>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div>
-      <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-0.5">{label}</p>
-      <p className="text-[12px] text-[#999] num">{value ?? '—'}</p>
-    </div>
-  );
-}
-
-function ArrowRight() {
-  return (
-    <svg className="w-4 h-4 text-[#444] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-    </svg>
-  );
-}
-
-function RefreshIcon() {
-  return (
-    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
   );
 }
