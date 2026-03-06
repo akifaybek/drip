@@ -275,7 +275,7 @@ export const submitContractTx = async ({ publicKey, method, args = [] }) => {
   const contract = getContract();
 
   try {
-    const account = await server.getAccount(publicKey);
+    const account = await _loadAccountOrThrow(server, publicKey);
 
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
@@ -393,7 +393,7 @@ const _waitForTx = async (server, hash) => {
 export const readContract = async (publicKey, method, args = []) => {
   const server   = getServer();
   const contract = getContract();
-  const account  = await server.getAccount(publicKey);
+  const account  = await _loadAccountOrThrow(server, publicKey);
 
   const tx = new TransactionBuilder(account, {
     fee:               BASE_FEE,
@@ -559,6 +559,28 @@ const _addrStr = (val) => {
 
 const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const _loadAccountOrThrow = async (server, publicKey) => {
+  try {
+    return await server.getAccount(publicKey);
+  } catch (e) {
+    const msg = String(e?.message ?? '');
+    const notFound = /account\s+not\s+found/i.test(msg);
+
+    if (notFound) {
+      if (network === 'testnet') {
+        throw new Error(
+          `Account not found on Testnet: ${publicKey}. Fund this wallet first via Friendbot: https://friendbot.stellar.org/?addr=${publicKey}`
+        );
+      }
+
+      throw new Error(
+        `Account not found on Public Network: ${publicKey}. Activate the wallet first by sending a minimum XLM balance.`
+      );
+    }
+
+    throw e;
+  }
+};
 
 const _getLocalLastStreamId = (publicKey) => {
   if (!publicKey || typeof window === 'undefined') return null;
