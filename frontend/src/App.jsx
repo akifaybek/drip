@@ -159,7 +159,7 @@ export default function App() {
             id: String(id),
             status: 'error',
             data: null,
-            error: e?.message || 'Stream okunamadı.',
+            error: e?.message || 'Failed to read stream.',
           };
         }
       })
@@ -181,7 +181,7 @@ export default function App() {
       const pk = await connectWallet();
       setWallet(pk);
     } catch (e) {
-      setConnectError(e?.message || 'Cüzdan bağlanamadı.');
+      setConnectError(e?.message || 'Wallet connection failed.');
     } finally {
       setConnecting(false);
     }
@@ -204,7 +204,7 @@ export default function App() {
       setStreams((prev) =>
         prev.map((s) =>
           s.id === String(id)
-            ? { ...s, status: 'error', error: e?.message || 'Yenileme başarısız.' }
+            ? { ...s, status: 'error', error: e?.message || 'Refresh failed.' }
             : s
         )
       );
@@ -224,7 +224,7 @@ export default function App() {
 
   async function addWatchById() {
     if (!wallet) {
-      setWatchErr('Önce cüzdan bağla.');
+      setWatchErr('Connect your wallet first.');
       return;
     }
 
@@ -240,7 +240,7 @@ export default function App() {
       setPage('streams');
       await loadAllStreams(wallet);
     } catch (e) {
-      setWatchErr(e?.message || 'Stream bulunamadı.');
+      setWatchErr(e?.message || 'Stream not found.');
     }
   }
 
@@ -353,8 +353,8 @@ export default function App() {
                 <div className="rounded-3xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 via-zinc-900 to-black p-10">
                   <h2 className="text-4xl font-semibold tracking-tight text-amber-100">Drip</h2>
                   <p className="mt-3 max-w-[560px] text-zinc-300 leading-relaxed">
-                    USDC maaş akışlarını profesyonel bir panelden yönet. Fonları kontratta kilitle,
-                    çalışanlar periyot doldukça güvenli şekilde claim etsin.
+                    Manage USDC payroll streams from a professional control panel. Lock funds in the contract,
+                    and let employees claim securely as each period becomes available.
                   </p>
                   <div className="mt-7 flex gap-3">
                     <button
@@ -395,7 +395,7 @@ export default function App() {
                   <CreateStream walletAddress={wallet} onCreated={handleCreated} />
                 ) : (
                   <div className="py-16 text-center">
-                    <p className="text-zinc-400 mb-4">Create stream için önce cüzdan bağla.</p>
+                    <p className="text-zinc-400 mb-4">Connect your wallet before creating a stream.</p>
                     <button
                       onClick={handleConnect}
                       className="h-10 px-5 rounded-xl bg-amber-500 text-black text-sm font-semibold"
@@ -417,7 +417,7 @@ export default function App() {
                       setWatchErr('');
                     }}
                     onKeyDown={(e) => e.key === 'Enter' && addWatchById()}
-                    placeholder="Stream ID ekle (u64)…"
+                    placeholder="Add Stream ID (u64)…"
                     className="flex-1 h-10 rounded-xl border border-amber-500/15 bg-black/40 px-3 text-sm outline-none focus:border-amber-400/60"
                   />
                   <button
@@ -432,7 +432,7 @@ export default function App() {
 
                 {!wallet ? (
                   <div className="rounded-2xl border border-amber-500/15 bg-[#101010] p-12 text-center">
-                    <p className="text-zinc-400 mb-4">Streams için cüzdan bağlantısı gerekiyor.</p>
+                    <p className="text-zinc-400 mb-4">Wallet connection is required to view streams.</p>
                     <button
                       onClick={handleConnect}
                       className="h-10 px-5 rounded-xl bg-amber-500 text-black text-sm font-semibold"
@@ -446,7 +446,7 @@ export default function App() {
                   </div>
                 ) : streams.length === 0 ? (
                   <div className="rounded-2xl border border-amber-500/15 bg-[#101010] p-12 text-center">
-                    <p className="text-zinc-400 mb-4">Henüz stream yok.</p>
+                    <p className="text-zinc-400 mb-4">No streams yet.</p>
                     <button
                       onClick={() => setPage('create')}
                       className="h-10 px-5 rounded-xl bg-amber-500 text-black text-sm font-semibold"

@@ -6,20 +6,20 @@ function ConfirmDialog({ open, onClose, onConfirm }) {
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
       <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-zinc-950 p-5">
-        <h4 className="text-lg font-semibold text-red-200">Stream iptal edilsin mi?</h4>
-        <p className="mt-2 text-sm text-zinc-300">Kalan bakiye işverene iade edilir ve stream pasife düşer.</p>
+        <h4 className="text-lg font-semibold text-red-200">Cancel this stream?</h4>
+        <p className="mt-2 text-sm text-zinc-300">The remaining balance will be refunded to the employer and the stream will become inactive.</p>
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
             className="h-10 px-4 rounded-xl border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
           >
-            Vazgeç
+            Keep stream
           </button>
           <button
             onClick={onConfirm}
             className="h-10 px-4 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-500"
           >
-            Evet, iptal et
+            Yes, cancel it
           </button>
         </div>
       </div>
@@ -63,7 +63,7 @@ export default function StreamCard({
       await onClaim?.();
       await onRefresh?.();
     } catch (e) {
-      setError(e?.message || 'Claim başarısız.');
+      setError(e?.message || 'Claim failed.');
     } finally {
       setLoading('');
     }
@@ -76,7 +76,7 @@ export default function StreamCard({
       await onCancel?.();
       setCancelOpen(false);
     } catch (e) {
-      setError(e?.message || 'Cancel başarısız.');
+      setError(e?.message || 'Cancel failed.');
     } finally {
       setLoading('');
     }

@@ -105,7 +105,7 @@ export const parseI128ToBigInt = (value) => {
 
   if (typeof value === 'number') {
     if (!Number.isInteger(value) || !Number.isSafeInteger(value)) {
-      throw new Error('i128 değeri güvenli Number aralığı dışında. BigInt/string bekleniyor.');
+      throw new Error('i128 value is outside the safe Number range. BigInt/string expected.');
     }
     return BigInt(value);
   }
@@ -122,7 +122,7 @@ export const parseI128ToBigInt = (value) => {
     return BigInt(s);
   }
 
-  throw new Error('i128 değeri BigInt’e çevrilemedi.');
+  throw new Error('Failed to convert i128 value to BigInt.');
 };
 
 /**
@@ -145,7 +145,7 @@ export const parseTokenAmount = (amount, decimals = USDC_DECIMALS) => {
   const s = String(amount ?? '').trim();
   if (!s) return 0n;
   if (!/^\d+(\.\d+)?$/.test(s)) {
-    throw new Error('Geçersiz miktar formatı.');
+    throw new Error('Invalid amount format.');
   }
 
   const [whole = '0', fraction = ''] = s.split('.');
@@ -213,7 +213,7 @@ export const connectWallet = async () => {
   const connected = typeof connResult === 'boolean' ? connResult : connResult?.isConnected === true;
   if (!connected) {
     throw new Error(
-      'Freighter cüzdanı bulunamadı. Lütfen https://freighter.app adresinden yükleyin.'
+      'Freighter wallet not found. Please install it from https://freighter.app.'
     );
   }
   await requestAccess();
@@ -235,9 +235,9 @@ export const getWalletAddress = async () => {
 /** freighter-api v6: getPublicKey() → getAddress(), döner { address, error? } */
 const _getKey = async () => {
   const result = await getAddress();
-  if (result?.error) throw new Error(result.error.message ?? 'Cüzdan adresi alınamadı.');
+  if (result?.error) throw new Error(result.error.message ?? 'Failed to get wallet address.');
   const pk = result?.address;
-  if (!pk) throw new Error('Cüzdan adresi alınamadı.');
+  if (!pk) throw new Error('Failed to get wallet address.');
   return pk;
 };
 
@@ -249,7 +249,7 @@ const getServer = () =>
 
 /** @returns {Contract} */
 const getContract = () => {
-  if (!CONTRACT_ID) throw new Error('REACT_APP_CONTRACT_ID .env içinde tanımlı değil.');
+  if (!CONTRACT_ID) throw new Error('REACT_APP_CONTRACT_ID is not defined in .env.');
   return new Contract(CONTRACT_ID);
 };
 
@@ -285,15 +285,15 @@ export const submitContractTx = async ({ publicKey, method, args = [] }) => {
       .setTimeout(60)
       .build();
 
-    _emitTxStatus({ status: TX_STATUS.SIMULATING, method, message: 'İşlem simüle ediliyor…' });
+    _emitTxStatus({ status: TX_STATUS.SIMULATING, method, message: 'Simulating transaction…' });
     const simResult = await server.simulateTransaction(tx);
     if (SorobanRpc.Api.isSimulationError(simResult)) {
-      throw _txStageError('simulate', method, `Simülasyon hatası: ${simResult.error}`);
+      throw _txStageError('simulate', method, `Simulation error: ${simResult.error}`);
     }
 
     const readyTx = SorobanRpc.assembleTransaction(tx, simResult).build();
 
-    _emitTxStatus({ status: TX_STATUS.SIGNING, method, message: 'Freighter imzası bekleniyor…' });
+    _emitTxStatus({ status: TX_STATUS.SIGNING, method, message: 'Waiting for Freighter signature…' });
     let signResult;
     try {
       // freighter-api v6: opts = { networkPassphrase?, address? }
@@ -303,37 +303,37 @@ export const submitContractTx = async ({ publicKey, method, args = [] }) => {
         address: publicKey,
       });
     } catch (e) {
-      throw _txStageError('sign', method, e?.message || 'İmzalama başarısız.');
+      throw _txStageError('sign', method, e?.message || 'Signing failed.');
     }
 
     // v6: { signedTxXdr: string, signerAddress: string, error? }
     if (signResult?.error) {
-      throw _txStageError('sign', method, signResult.error.message ?? 'İmzalama iptal edildi.');
+      throw _txStageError('sign', method, signResult.error.message ?? 'Signing was cancelled.');
     }
     const signedXDR = signResult?.signedTxXdr;
     if (!signedXDR) {
-      throw _txStageError('sign', method, 'İmzalama iptal edildi veya başarısız.');
+      throw _txStageError('sign', method, 'Signing was cancelled or failed.');
     }
 
-    _emitTxStatus({ status: TX_STATUS.SUBMITTING, method, message: 'İşlem ağa gönderiliyor…' });
+    _emitTxStatus({ status: TX_STATUS.SUBMITTING, method, message: 'Submitting transaction to network…' });
     let submitted;
     try {
       const signedTx = TransactionBuilder.fromXDR(signedXDR, NETWORK_PASSPHRASE);
       submitted = await server.sendTransaction(signedTx);
     } catch (e) {
-      throw _txStageError('send', method, e?.message || 'Ağa gönderim başarısız.');
+      throw _txStageError('send', method, e?.message || 'Failed to submit to network.');
     }
 
     if (submitted.status === 'ERROR') {
-      const detail = submitted.errorResult?.toXDR?.('base64') ?? 'bilinmiyor';
-      throw _txStageError('send', method, `Gönderme hatası: ${detail}`);
+      const detail = submitted.errorResult?.toXDR?.('base64') ?? 'unknown';
+      throw _txStageError('send', method, `Submit error: ${detail}`);
     }
 
     _emitTxStatus({
       status: TX_STATUS.CONFIRMING,
       method,
       txHash: submitted.hash,
-      message: 'On-chain onay bekleniyor…',
+      message: 'Waiting for on-chain confirmation…',
     });
 
     try {
@@ -342,12 +342,12 @@ export const submitContractTx = async ({ publicKey, method, args = [] }) => {
         status: TX_STATUS.DONE,
         method,
         txHash: submitted.hash,
-        message: 'İşlem başarıyla onaylandı.',
+        message: 'Transaction confirmed successfully.',
       });
       setTimeout(() => _emitTxStatus({ status: TX_STATUS.IDLE, method }), 2000);
       return result;
     } catch (e) {
-      throw _txStageError('confirm', method, e?.message || 'Onay alınamadı.');
+      throw _txStageError('confirm', method, e?.message || 'Confirmation failed.');
     }
   } catch (e) {
     const stage = e?.stage || 'unknown';
@@ -355,8 +355,8 @@ export const submitContractTx = async ({ publicKey, method, args = [] }) => {
       status: TX_STATUS.ERROR,
       method,
       stage,
-      error: e?.message || 'Bilinmeyen işlem hatası.',
-      message: `İşlem başarısız (${stage}).`,
+      error: e?.message || 'Unknown transaction error.',
+      message: `Transaction failed (${stage}).`,
     });
     throw e;
   }
@@ -372,13 +372,13 @@ const _waitForTx = async (server, hash) => {
     }
     if (result.status === 'FAILED') {
       throw new Error(
-        `İşlem başarısız. Hash: ${hash}\n${result.resultXdr ?? ''}`
+        `Transaction failed. Hash: ${hash}\n${result.resultXdr ?? ''}`
       );
     }
     // NOT_FOUND → hâlâ işleniyor, bekle
     await _sleep(2000);
   }
-  throw new Error(`İşlem zaman aşımı. Hash: ${hash}`);
+  throw new Error(`Transaction timed out. Hash: ${hash}`);
 };
 
 /**
@@ -405,7 +405,7 @@ export const readContract = async (publicKey, method, args = []) => {
 
   const simResult = await server.simulateTransaction(tx);
   if (SorobanRpc.Api.isSimulationError(simResult)) {
-    throw new Error(`Okuma hatası (${method}): ${simResult.error}`);
+    throw new Error(`Read error (${method}): ${simResult.error}`);
   }
   if (!simResult.result?.retval) return null;
 
@@ -433,7 +433,7 @@ export const createStream = async ({
   totalAmount,
 }) => {
   if (!USDC_TOKEN_ID)
-    throw new Error('REACT_APP_USDC_ADDRESS .env içinde tanımlı değil.');
+    throw new Error('REACT_APP_USDC_ADDRESS is not defined in .env.');
 
   const amountStroops = parseTokenAmount(amountPerPeriod, USDC_DECIMALS);
   const totalStroops  = parseTokenAmount(totalAmount, USDC_DECIMALS);

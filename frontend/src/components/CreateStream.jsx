@@ -32,32 +32,32 @@ export default function CreateStream({ walletAddress, onCreated }) {
     const next = {};
 
     if (!form.employee.trim()) {
-      next.employee = 'Çalışan adresi zorunlu.';
+      next.employee = 'Employee address is required.';
     } else if (!form.employee.startsWith('G') || form.employee.length !== 56) {
-      next.employee = 'Geçerli bir Stellar adresi gir.';
+      next.employee = 'Enter a valid Stellar address.';
     } else if (form.employee.trim() === walletAddress) {
-      next.employee = 'İşveren ve çalışan aynı olamaz.';
+      next.employee = 'Employer and employee cannot be the same.';
     }
 
     let per = 0n;
     try {
       per = parseTokenAmount(form.amountPerPeriod || '0');
-      if (per <= 0n) next.amountPerPeriod = 'Periyot miktarı sıfırdan büyük olmalı.';
+      if (per <= 0n) next.amountPerPeriod = 'Amount per period must be greater than zero.';
     } catch {
-      next.amountPerPeriod = 'Geçerli bir miktar gir.';
+      next.amountPerPeriod = 'Enter a valid amount.';
     }
 
     const days = Number.parseInt(form.intervalDays, 10);
     if (!Number.isInteger(days) || days < 1) {
-      next.intervalDays = 'En az 1 gün olmalı.';
+      next.intervalDays = 'Must be at least 1 day.';
     }
 
     try {
       const total = parseTokenAmount(form.totalAmount || '0');
-      if (total <= 0n) next.totalAmount = 'Toplam miktar sıfırdan büyük olmalı.';
-      if (per > 0n && total < per) next.totalAmount = 'Toplam, periyottan küçük olamaz.';
+      if (total <= 0n) next.totalAmount = 'Total amount must be greater than zero.';
+      if (per > 0n && total < per) next.totalAmount = 'Total amount cannot be less than one period amount.';
     } catch {
-      next.totalAmount = 'Geçerli bir toplam miktar gir.';
+      next.totalAmount = 'Enter a valid total amount.';
     }
 
     setErrors(next);
@@ -85,7 +85,7 @@ export default function CreateStream({ walletAddress, onCreated }) {
       setForm({ employee: '', amountPerPeriod: '', intervalDays: '30', totalAmount: '' });
       setErrors({});
     } catch (err) {
-      setSubmitError(err?.message || 'Stream oluşturma başarısız.');
+      setSubmitError(err?.message || 'Failed to create stream.');
     } finally {
       setLoading(false);
     }
@@ -94,20 +94,20 @@ export default function CreateStream({ walletAddress, onCreated }) {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-xl font-semibold tracking-tight text-amber-100">Yeni ödeme akışı</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-amber-100">Create new payroll stream</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          USDC’yi kontratta kilitle, çalışan periyot doldukça güvenli şekilde claim etsin.
+          Lock USDC in the contract and let the employee claim safely as each period unlocks.
         </p>
       </div>
 
       <form onSubmit={submit} className="space-y-5">
-        <Field label="İşveren" hint="Bağlı cüzdan adresi">
+        <Field label="Employer" hint="Connected wallet address">
           <div className="h-11 rounded-xl border border-amber-500/20 bg-black/40 px-3 flex items-center font-mono text-sm text-zinc-300">
             {walletAddress}
           </div>
         </Field>
 
-        <Field label="Çalışan adresi" error={errors.employee}>
+        <Field label="Employee address" error={errors.employee}>
           <input
             type="text"
             value={form.employee}
@@ -120,7 +120,7 @@ export default function CreateStream({ walletAddress, onCreated }) {
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Periyot başına" error={errors.amountPerPeriod}>
+          <Field label="Per period" error={errors.amountPerPeriod}>
             <div className="relative">
               <input
                 type="number"
@@ -135,7 +135,7 @@ export default function CreateStream({ walletAddress, onCreated }) {
             </div>
           </Field>
 
-          <Field label="Periyot" error={errors.intervalDays}>
+          <Field label="Interval" error={errors.intervalDays}>
             <div className="relative">
               <input
                 type="number"
@@ -146,12 +146,12 @@ export default function CreateStream({ walletAddress, onCreated }) {
                 placeholder="30"
                 className={inputClass(!!errors.intervalDays) + ' pr-14'}
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">gün</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">days</span>
             </div>
           </Field>
         </div>
 
-        <Field label="Toplam kilitlenecek" error={errors.totalAmount}>
+        <Field label="Total to lock" error={errors.totalAmount}>
           <div className="relative">
             <input
               type="number"
@@ -168,9 +168,9 @@ export default function CreateStream({ walletAddress, onCreated }) {
 
         {periodsPreview !== null && (
           <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4">
-            <p className="text-xs uppercase tracking-wider text-zinc-500">Özet</p>
+            <p className="text-xs uppercase tracking-wider text-zinc-500">Summary</p>
             <p className="mt-2 text-sm text-zinc-200">
-              ≈ <span className="font-semibold text-amber-200">{periodsPreview.toString()}</span> periyot
+              ≈ <span className="font-semibold text-amber-200">{periodsPreview.toString()}</span> periods
             </p>
             <p className="mt-1 text-sm text-zinc-300">
               {formatTokenAmount(parseTokenAmount(form.amountPerPeriod || '0'))} USDC / period
@@ -190,7 +190,7 @@ export default function CreateStream({ walletAddress, onCreated }) {
             disabled={loading}
             className="h-11 px-6 rounded-xl bg-amber-500 text-black text-sm font-semibold hover:bg-amber-400 disabled:opacity-50"
           >
-            {loading ? 'Oluşturuluyor…' : 'Create stream'}
+            {loading ? 'Creating…' : 'Create stream'}
           </button>
         </div>
       </form>
