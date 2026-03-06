@@ -1,6 +1,6 @@
-# Stellar Flow
+# Drip
 
-Stellar Flow, Soroban üzerinde çalışan USDC tabanlı payroll (maaş akışı) uygulamasıdır.
+Drip, Soroban üzerinde çalışan USDC tabanlı payroll (maaş akışı) uygulamasıdır.
 
 - **Contract (Rust/Soroban):** Multi-stream ödeme akışları (`stream_id` tabanlı)
 - **Frontend (React + Freighter):** Akış oluşturma, görüntüleme, claim/cancel
@@ -16,9 +16,9 @@ Stellar Flow, Soroban üzerinde çalışan USDC tabanlı payroll (maaş akışı
 ## Proje Yapısı
 
 ```text
-stellar-flow/
+drip/
   contracts/
-    stellar-flow/      # Soroban contract
+    stellar-flow/      # Soroban contract crate adı (mevcut klasör adı)
   frontend/            # CRA frontend
 ```
 
