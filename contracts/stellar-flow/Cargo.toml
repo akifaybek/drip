@@ -1,0 +1,29 @@
+[package]
+name    = "stellar-flow"
+version = "0.1.0"
+edition = "2021"
+description = "Stellar Flow — DAO Payroll Protocol on Soroban"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# ── Release profili: Wasm boyutunu minimize et ──────────────────────────────
+[profile.release]
+opt-level      = "z"
+overflow-checks = true
+debug          = 0
+strip          = "symbols"
+debug-assertions = false
+panic          = "abort"
+codegen-units  = 1
+lto            = true
+
+# ── Bağımlılıklar ────────────────────────────────────────────────────────────
+[dependencies]
+soroban-sdk = { version = "21.7.6" }
+
+[dev-dependencies]
+soroban-sdk = { version = "21.7.6", features = ["testutils"] }
+
+[features]
+testutils = ["soroban-sdk/testutils"]

@@ -1,0 +1,3 @@
+[workspace]
+members = ["stellar-flow"]
+resolver = "2"
