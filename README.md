@@ -155,6 +155,7 @@ cargo build --target wasm32v1-none --release
 - Run a create → claim → cancel flow on testnet.
 - Verify transaction hashes on Stellar Expert testnet explorer.
 - Confirm stream state transitions after each action.
+- Live Demo : https://frontend-nine-xi-pc3pghnon6.vercel.app/
 
 ---
 
