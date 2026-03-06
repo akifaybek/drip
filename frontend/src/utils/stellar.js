@@ -559,6 +559,51 @@ const _addrStr = (val) => {
 
 const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const _waitForAccount = async (server, publicKey, attempts = 6, delayMs = 1500) => {
+  let lastError;
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await server.getAccount(publicKey);
+    } catch (e) {
+      lastError = e;
+      const msg = String(e?.message ?? '');
+      const notFound = /account\s+not\s+found/i.test(msg);
+
+      if (!notFound) throw e;
+      if (i < attempts - 1) await _sleep(delayMs);
+    }
+  }
+
+  throw lastError ?? new Error('Account could not be loaded.');
+};
+
+const _fundTestnetWithFriendbot = async (publicKey) => {
+  const endpoint = `https://friendbot.stellar.org/?addr=${encodeURIComponent(publicKey)}`;
+  let response;
+
+  try {
+    response = await fetch(endpoint, { method: 'GET' });
+  } catch (e) {
+    throw new Error(
+      `Friendbot request failed for ${publicKey}. Please fund manually: ${endpoint}. ${e?.message ?? ''}`.trim()
+    );
+  }
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      detail = await response.text();
+    } catch {
+      detail = '';
+    }
+
+    throw new Error(
+      `Friendbot could not fund ${publicKey} (HTTP ${response.status}). Please fund manually: ${endpoint}${detail ? ` | ${detail}` : ''}`
+    );
+  }
+};
+
 const _loadAccountOrThrow = async (server, publicKey) => {
   try {
     return await server.getAccount(publicKey);
@@ -568,9 +613,14 @@ const _loadAccountOrThrow = async (server, publicKey) => {
 
     if (notFound) {
       if (network === 'testnet') {
-        throw new Error(
-          `Account not found on Testnet: ${publicKey}. Fund this wallet first via Friendbot: https://friendbot.stellar.org/?addr=${publicKey}`
-        );
+        await _fundTestnetWithFriendbot(publicKey);
+        try {
+          return await _waitForAccount(server, publicKey);
+        } catch {
+          throw new Error(
+            `Account was funded on Testnet but is not yet readable: ${publicKey}. Wait a few seconds and retry.`
+          );
+        }
       }
 
       throw new Error(
