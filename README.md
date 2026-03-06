@@ -1,123 +1,175 @@
 # Drip
 
-Drip is a USDC-based payroll streaming application built on Soroban.
+USDC payroll streaming on Stellar Soroban.
 
-- **Contract (Rust/Soroban):** Multi-stream payment flows (`stream_id` based)
-- **Frontend (React + Freighter):** Create, view, claim, and cancel streams
+---
 
-## Features
+## About Me
 
-- Multi-stream model: `Map<stream_id, Stream>`
-- Safe `claim/cancel` flow (auth + checked arithmetic + invariants)
-- BigInt-safe frontend token calculations (i128 compatible)
-- Tx lifecycle UX: `simulate -> sign -> send -> confirm`
-- Global tx statuses: `idle | simulating | signing | submitting | confirming | done | error`
+Hi, I’m **Akif Aybek**.
 
-## Project Structure
+I am a software developer focused on blockchain products, practical smart contracts, and clean user experience. I enjoy building tools that solve real payment and workflow problems. In this project, I combined Soroban smart contracts with a React frontend to create a simple payroll streaming prototype. My goal is to keep the product developer-friendly, auditable, and easy to demonstrate in real testnet conditions.
 
-```text
-drip/
-  contracts/
-    stellar-flow/      # Soroban contract crate name (current folder name)
-  frontend/            # CRA frontend
+---
+
+## Project Description
+
+**Drip** is a payroll streaming dApp built on Stellar Soroban. It allows an employer to create time-based USDC payment streams for an employee instead of sending one large payment upfront. The contract stores each stream with amount-per-period, interval, total amount, claimed amount, and active status. Employees can claim earned amounts over time, while employers can cancel streams and recover unclaimed funds. The frontend integrates with Freighter for signing and shows transaction lifecycle states from simulation to on-chain confirmation. This approach improves transparency, reduces manual payroll steps, and demonstrates programmable money flows with simple, understandable UX.
+
+---
+
+## Vision
+
+Drip’s vision is to make payroll more fair, transparent, and continuous by turning salary payments into programmable cash flow. Instead of waiting for fixed payout dates, workers should be able to access earned value in a controlled and auditable way. On Stellar, this can become fast, low-cost, and globally accessible for startups, DAOs, and remote teams. Over time, this model can expand beyond salaries into grants, subscriptions, and milestone-based contributor rewards. By combining secure smart contracts with a simple user interface, Drip aims to help both technical and non-technical users adopt blockchain-powered payroll with confidence.
+
+---
+
+## Software Development Plan
+
+1. **Design data model and stream lifecycle**
+   - Define stream struct fields (`employer`, `employee`, `token`, `amount_per_period`, `interval`, `total`, `claimed`, `timestamps`, `active`).
+   - Define invariants and validation rules.
+
+2. **Implement core Soroban contract methods**
+   - `create_stream`
+   - `claim`
+   - `cancel`
+   - read methods such as `get_stream` and `claimable_amount`.
+
+3. **Add safety and correctness checks**
+   - Authorization checks.
+   - Checked arithmetic for token math.
+   - State transition guards and error handling.
+
+4. **Build React + Freighter frontend**
+   - Wallet connect, stream creation form, stream card view.
+   - Claim/cancel actions and local stream tracking UX.
+
+5. **Integrate transaction lifecycle + testnet deployment**
+   - Simulate → sign → submit → confirm flow.
+   - Deploy contract, configure environment, and run end-to-end tests.
+
+---
+
+## Personal Story
+
+I built Drip because I wanted to explore a real payment problem instead of a purely technical demo. Payroll is a universal workflow with clear pain points: delays, manual operations, and low transparency. Soroban gave me a solid environment to model these rules directly in a contract. During development, I focused on practical reliability: safer token math, wallet flow clarity, and testnet debugging. This project helped me improve both contract thinking and frontend product sense, and it gave me a stronger foundation for building real blockchain applications.
+
+---
+
+## Tech Stack
+
+- **Smart Contract:** Rust + Soroban SDK
+- **Frontend:** React (CRA)
+- **Wallet:** Freighter
+- **Network:** Stellar Testnet / Public
+- **RPC:** Soroban RPC
+
+---
+
+## Smart Contract Features
+
+- Multi-stream architecture (`stream_id` based)
+- Time-based claimable calculation
+- Partial claim support
+- Employer cancellation with remaining-fund logic
+- Read-only state query helpers
+- Validation and invariant checks
+
+---
+
+## Frontend Features
+
+- Connect wallet with Freighter
+- Create, view, refresh, claim, and cancel streams
+- BigInt-safe token formatting/parsing
+- Transaction lifecycle feedback (`idle`, `simulating`, `signing`, `submitting`, `confirming`, `done`, `error`)
+- Explorer-friendly transaction hash flow
+
+---
+
+## Installation
+
+### 1) Clone repository
+
+```bash
+git clone https://github.com/akifaybek/drip.git
+cd drip
 ```
 
-## Requirements
-
-- Node.js 18+
-- npm
-- Rust toolchain
-- Soroban CLI (for deployment)
-- Freighter Wallet (browser extension)
-
-## Development Setup
-
-### 1) Prepare frontend environment file
+### 2) Setup frontend environment
 
 ```bash
 cd frontend
 cp .env.example .env
 ```
 
-Then fill in the values in `.env`.
+Fill [`frontend/.env`](frontend/.env) values:
 
-### 2) Run frontend development server
+```env
+REACT_APP_CONTRACT_ID=YOUR_DEPLOYED_CONTRACT_ID
+REACT_APP_NETWORK=testnet
+REACT_APP_RPC_URL=https://soroban-testnet.stellar.org
+REACT_APP_USDC_ADDRESS=YOUR_TOKEN_CONTRACT_ID
+REACT_APP_USDC_DECIMALS=7
+```
+
+### 3) Install frontend dependencies
 
 ```bash
-cd frontend
 npm install
+```
+
+### 4) Run frontend
+
+```bash
 npm start
 ```
 
-### 3) Build frontend for production
+### 5) Build frontend
 
 ```bash
-cd frontend
 npm run build
 ```
 
-## Contract Build/Test
+### 6) Build/test contract
 
 ```bash
-cd contracts/stellar-flow
+cd ../contracts/stellar-flow
 cargo test -q
 cargo build --target wasm32v1-none --release
 ```
 
-## Contract Deploy (Summary)
+---
 
-> Choose RPC/passphrase values according to your target network (testnet/mainnet).
+## Configuration Notes
 
-1. Build the contract wasm output (`cargo build ... --release`)
-2. Deploy via Soroban CLI
-3. Get the deployed **Contract ID**
-4. Update frontend `.env` with `REACT_APP_CONTRACT_ID`
+- Frontend contract and token addresses are read from [`frontend/.env`](frontend/.env).
+- If you redeploy the contract, update `REACT_APP_CONTRACT_ID`.
+- Keep `REACT_APP_NETWORK` and `REACT_APP_RPC_URL` aligned.
 
-## Contract ID Update
+---
 
-The frontend reads contract address only from `.env`:
+## Demo / Verification
 
-```env
-REACT_APP_CONTRACT_ID=YOUR_DEPLOYED_CONTRACT_ID
-```
+- Run a create → claim → cancel flow on testnet.
+- Verify transaction hashes on Stellar Expert testnet explorer.
+- Confirm stream state transitions after each action.
 
-If you redeploy the contract, make sure this value is updated.
+---
 
-## Network Configuration
+## Bootcamp Submission Notes
 
-Frontend uses `REACT_APP_NETWORK`:
+- README includes:
+  - About Me
+  - Project Description
+  - Vision
+  - Software Development Plan (5 steps)
+  - Personal Story
+  - Installation and technical details
 
-- `testnet`
-- `public`
-
-Example:
-
-```env
-REACT_APP_NETWORK=testnet
-REACT_APP_RPC_URL=https://soroban-testnet.stellar.org
-```
-
-## Known Issues
-
-- As an MVP approach, frontend stores recently tracked `stream_id` values in `localStorage`.
-- Old local storage data may affect stream visibility across different wallet/address combinations.
-- If Freighter signature popup is closed by user, transaction fails at `sign` stage (expected behavior).
-- Confirmation/poll time can increase under network congestion.
-
-## Production Checklist
-
-Validate all of the following before deployment:
-
-- [ ] `cargo test -q` succeeded
-- [ ] `cargo build --target wasm32v1-none --release` succeeded
-- [ ] `npm run build` in `frontend` succeeded
-- [ ] `REACT_APP_CONTRACT_ID` matches the latest deployed contract ID
-- [ ] `REACT_APP_NETWORK` and `REACT_APP_RPC_URL` match target network
-- [ ] `REACT_APP_USDC_ADDRESS` is the correct token contract address
-- [ ] End-to-end smoke tests for create/claim/cancel done with Freighter
-- [ ] Tx lifecycle states display correctly in UI (`simulate/sign/send/confirm`)
-- [ ] Tx hash verified on explorer
+---
 
 ## License
 
-See project license file: `LICENSE`.
+See [`LICENSE`](LICENSE).
