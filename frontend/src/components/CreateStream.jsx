@@ -106,7 +106,7 @@ export default function CreateStream({ walletAddress, onSuccess }) {
     <div>
       {/* Page title line */}
       <div className="mb-6">
-        <p className="text-[13px] text-[#555555]">
+        <p className="text-[13px] text-[#888]">
           Lock USDC in escrow — the recipient claims each period as they earn it. Automatic, trustless, on-chain.
         </p>
       </div>
@@ -118,7 +118,7 @@ export default function CreateStream({ walletAddress, onSuccess }) {
           <FieldLabel>Paying from</FieldLabel>
           <div className="flex items-center gap-2.5 h-9 px-3 rounded-lg border border-[#222222] bg-[#111111]">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0 pulse-slow" />
-            <span className="font-mono text-[11px] text-[#555555] truncate">{walletAddress}</span>
+            <span className="font-mono text-[11px] text-[#888] truncate">{walletAddress}</span>
           </div>
         </div>
 
@@ -202,7 +202,7 @@ export default function CreateStream({ walletAddress, onSuccess }) {
 
         {/* Divider */}
         <div className="border-t border-[#1a1a1a] pt-4 flex items-center justify-between gap-4">
-          <p className="text-[11px] text-[#333]">
+          <p className="text-[11px] text-[#555]">
             Stellar {network} · Gas calculated by Freighter
           </p>
           <button
@@ -270,7 +270,7 @@ function SuccessCard({ result, onDone }) {
 // Primitives
 // ─────────────────────────────────────────────────────────────────────────────
 function FieldLabel({ children }) {
-  return <p className="text-[11px] font-medium text-[#555555] mb-1.5">{children}</p>;
+  return <p className="text-[11px] font-medium text-[#888] mb-1.5">{children}</p>;
 }
 
 function Field({ label, error, hint, children }) {
@@ -279,22 +279,22 @@ function Field({ label, error, hint, children }) {
       <FieldLabel>{label}</FieldLabel>
       {children}
       {error && <p className="mt-1.5 text-[11px] text-red-400 leading-relaxed">{error}</p>}
-      {hint && !error && <p className="mt-1.5 text-[11px] text-[#3a3a3a]">{hint}</p>}
+      {hint && !error && <p className="mt-1.5 text-[11px] text-[#666]">{hint}</p>}
     </div>
   );
 }
 
 function Badge({ children }) {
   return (
-    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-[#3a3a3a] pointer-events-none select-none">
+    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-[#666] pointer-events-none select-none">
       {children}
     </span>
   );
 }
 
 const inp = (err) =>
-  `w-full h-9 bg-[#111111] border ${
+  `w-full h-9 bg-[#181818] border ${
     err
-      ? 'border-red-900/60 focus:border-red-600/60'
-      : 'border-[#222222] focus:border-[#3a3a3a]'
-  } rounded-lg px-3 text-[13px] text-[#e8e8eb] placeholder-[#333333] outline-none transition-colors`;
+      ? 'border-red-700/60 focus:border-red-500/60'
+      : 'border-[#2a2a2a] focus:border-[#4a4a4a]'
+  } rounded-lg px-3 text-[13px] text-[#e8e8eb] placeholder-[#4a4a4a] outline-none transition-colors`;

@@ -239,7 +239,7 @@ function Landing({ onConnect, loading, error }) {
       </div>
       <h1 className="text-[28px] font-semibold tracking-tight text-[#e8e8eb] leading-none mb-3">Drip</h1>
       <p className="text-[15px] text-[#555] mb-2">DAO payroll, drop by drop.</p>
-      <p className="text-[13px] text-[#383838] leading-relaxed mb-10 max-w-[300px] mx-auto">
+      <p className="text-[13px] text-[#666] leading-relaxed mb-10 max-w-[300px] mx-auto">
         Lock USDC into Soroban smart contracts. Contributors withdraw as they earn — automatic, trustless, transparent.
       </p>
       <button
@@ -249,7 +249,7 @@ function Landing({ onConnect, loading, error }) {
         {loading ? <><Spinner size={14} color="#333" /> Connecting…</> : 'Connect Freighter'}
       </button>
       {error && <p className="mt-3 text-[12px] text-red-400">{error}</p>}
-      <div className="mt-8 flex items-center justify-center gap-5 text-[11px] text-[#2a2a2a]">
+      <div className="mt-8 flex items-center justify-center gap-5 text-[11px] text-[#555]">
         {['Soroban', 'Stellar Testnet', 'USDC'].map((f, i, arr) => (
           <span key={f} className="flex items-center gap-5">
             {f}
@@ -257,10 +257,10 @@ function Landing({ onConnect, loading, error }) {
           </span>
         ))}
       </div>
-      <p className="mt-6 text-[11px] text-[#2a2a2a]">
+      <p className="mt-6 text-[11px] text-[#555]">
         Requires{' '}
         <a href="https://freighter.app" target="_blank" rel="noreferrer"
-          className="text-[#3a3a3a] hover:text-[#666] underline underline-offset-2 transition-colors">
+          className="text-[#666] hover:text-[#666] underline underline-offset-2 transition-colors">
           Freighter
         </a>{' '}browser extension
       </p>
@@ -302,11 +302,11 @@ function StreamsView({ wallet, streams, ready, onCreate, onRefresh, onAddById })
     return (
       <div className="max-w-xl space-y-6">
         <div className="flex flex-col items-start py-8">
-          <div className="w-10 h-10 rounded-xl border border-[#222] bg-[#181818] flex items-center justify-center mb-4">
-            <IconList size={16} color="#444" />
+          <div className="w-10 h-10 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] flex items-center justify-center mb-4">
+            <IconList size={16} color="#777" />
           </div>
           <p className="text-[14px] font-medium text-[#888] mb-1.5">No streams yet</p>
-          <p className="text-[13px] text-[#3a3a3a] mb-5 max-w-[280px] leading-relaxed">
+          <p className="text-[13px] text-[#666] mb-5 max-w-[280px] leading-relaxed">
             Create a new stream, or enter a stream ID you were given to start tracking it.
           </p>
           <button
@@ -366,11 +366,11 @@ function WatchForm({ watchId, setWatchId, onSubmit, watching, error, setWatchErr
           onChange={e => { setWatchId(e.target.value); setWatchErr?.(''); }}
           placeholder="Watch a stream by ID…"
           type="number" min="0"
-          className="flex-1 h-8 px-3 bg-[#111111] border border-[#222222] focus:border-[#3a3a3a] rounded-lg text-[12px] text-[#888] placeholder-[#2a2a2a] outline-none transition-colors num"
+          className="flex-1 h-8 px-3 bg-[#181818] border border-[#2a2a2a] focus:border-[#4a4a4a] rounded-lg text-[12px] text-[#aaa] placeholder-[#4a4a4a] outline-none transition-colors num"
         />
         <button
           type="submit" disabled={watching || !watchId.trim()}
-          className="h-8 px-3.5 flex items-center gap-1.5 bg-[#1a1a1a] hover:bg-[#222] border border-[#222] rounded-lg text-[12px] text-[#666] hover:text-[#aaa] disabled:opacity-40 transition-colors flex-shrink-0"
+          className="h-8 px-3.5 flex items-center gap-1.5 bg-[#1e1e1e] hover:bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg text-[12px] text-[#888] hover:text-[#ccc] disabled:opacity-40 transition-colors flex-shrink-0"
         >
           {watching ? <Spinner size={11} /> : null}
           Watch
@@ -392,7 +392,7 @@ function StreamSkeleton({ id }) {
           <div className="w-8 h-3 bg-[#1e1e1e] rounded" />
           <div className="w-16 h-5 bg-[#1e1e1e] rounded-full" />
         </div>
-        {id != null && <span className="text-[11px] text-[#2a2a2a] font-mono">#{id}</span>}
+        {id != null && <span className="text-[11px] text-[#555] font-mono">#{id}</span>}
       </div>
       <div className="px-5 py-4 space-y-3">
         <div className="h-3 bg-[#1a1a1a] rounded w-3/4" />

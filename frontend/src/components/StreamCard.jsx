@@ -139,48 +139,48 @@ export default function StreamCard({ stream, streamId, walletAddress, onRefresh 
   const busy = actionState.status === 'loading';
 
   return (
-    <div className="rounded-xl border border-[#1e1e1e] bg-[#111111] overflow-hidden">
+    <div className="rounded-xl border border-[#252525] bg-[#111111] overflow-hidden">
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1a1a1a]">
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#222]">
         <div className="flex items-center gap-2.5">
           <StatusPill active={stream?.active} />
           {streamId != null && (
-            <span className="text-[11px] font-mono text-[#2a2a2a] num">#{streamId}</span>
+            <span className="text-[11px] font-mono text-[#555] num">#{streamId}</span>
           )}
         </div>
         <button
           onClick={onRefresh} disabled={busy}
-          className="text-[11px] text-[#333] hover:text-[#666] transition-colors flex items-center gap-1.5 disabled:opacity-40"
+          className="text-[11px] text-[#888] hover:text-[#888] transition-colors flex items-center gap-1.5 disabled:opacity-40"
         >
           <RefreshIcon /> Refresh
         </button>
       </div>
 
       {/* ── Employer → Employee ─────────────────────────────────────────── */}
-      <div className="px-5 py-4 border-b border-[#1a1a1a] flex items-center gap-3">
+      <div className="px-5 py-4 border-b border-[#222] flex items-center gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-[#3a3a3a] mb-1">Employer</p>
-          <p className="font-mono text-[12px] text-[#666] truncate">{shortAddr(stream?.employer, 8, 6)}</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">Employer</p>
+          <p className="font-mono text-[12px] text-[#888] truncate">{shortAddr(stream?.employer, 8, 6)}</p>
         </div>
         <ArrowRight />
         <div className="flex-1 min-w-0 text-right">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-[#3a3a3a] mb-1">Employee</p>
-          <p className="font-mono text-[12px] text-[#666] truncate">{shortAddr(stream?.employee, 8, 6)}</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">Employee</p>
+          <p className="font-mono text-[12px] text-[#888] truncate">{shortAddr(stream?.employee, 8, 6)}</p>
         </div>
       </div>
 
       {/* ── Progress ────────────────────────────────────────────────────── */}
-      <div className="px-5 py-4 border-b border-[#1a1a1a]">
+      <div className="px-5 py-4 border-b border-[#222]">
         <div className="flex items-end justify-between mb-2.5">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-[#3a3a3a] mb-1">Progress</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">Progress</p>
             <p className="text-[13px] font-medium text-[#e8e8eb] num">
               {formatTokenAmount(claimed)}
-              <span className="text-[#3a3a3a] font-normal"> / {formatTokenAmount(total)} USDC</span>
+              <span className="text-[#888] font-normal"> / {formatTokenAmount(total)} USDC</span>
             </p>
           </div>
-          <span className="text-[12px] text-[#3a3a3a] num">{pct.toFixed(1)}%</span>
+          <span className="text-[12px] text-[#888] num">{pct.toFixed(1)}%</span>
         </div>
         <div className="h-1 rounded-full bg-[#1a1a1a] overflow-hidden">
           <div
@@ -192,11 +192,11 @@ export default function StreamCard({ stream, streamId, walletAddress, onRefresh 
 
       {/* ── Countdown (employee only, active stream) ─────────────────────── */}
       {isEmployee && stream?.active && nextClaimTs && (
-        <div className={`px-5 py-3 border-b border-[#1a1a1a] flex items-center justify-between ${
+        <div className={`px-5 py-3 border-b border-[#222] flex items-center justify-between ${
           claimReady ? 'bg-[#0d1a0d]' : ''
         }`}>
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-[#3a3a3a] mb-0.5">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-0.5">
               {claimReady ? 'Next claim' : 'Next claim in'}
             </p>
             <p className={`text-[13px] font-semibold num tracking-tight ${
@@ -214,7 +214,7 @@ export default function StreamCard({ stream, streamId, walletAddress, onRefresh 
       )}
 
       {/* ── Details ─────────────────────────────────────────────────────── */}
-      <div className="px-5 py-4 border-b border-[#1a1a1a] grid grid-cols-2 gap-x-6 gap-y-3">
+      <div className="px-5 py-4 border-b border-[#222] grid grid-cols-2 gap-x-6 gap-y-3">
         <Stat label="Per period"  value={`${formatTokenAmount(stream?.amountPerPeriod)} USDC`} />
         <Stat label="Interval"    value={`${intervalDays} days`} />
         <Stat label="Remaining"   value={`${formatTokenAmount(remaining)} USDC`} />
@@ -227,14 +227,14 @@ export default function StreamCard({ stream, streamId, walletAddress, onRefresh 
         {isEmployee && (
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider text-[#3a3a3a] mb-1">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">
                 Available to claim
               </p>
               <p className={`text-[22px] font-semibold num tracking-tight leading-none ${
-                claimable > 0n ? 'text-[#e8e8eb]' : 'text-[#2a2a2a]'
+                claimable > 0n ? 'text-[#e8e8eb]' : 'text-[#555]'
               }`}>
                 {formatTokenAmount(claimable)}
-                <span className="text-[13px] font-normal text-[#3a3a3a] ml-1.5">USDC</span>
+                <span className="text-[13px] font-normal text-[#888] ml-1.5">USDC</span>
               </p>
             </div>
             <button
@@ -251,12 +251,12 @@ export default function StreamCard({ stream, streamId, walletAddress, onRefresh 
         {isEmployer && (
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider text-[#3a3a3a] mb-1">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-1">
                 Remaining in escrow
               </p>
               <p className="text-[22px] font-semibold num tracking-tight leading-none text-[#e8e8eb]">
                 {formatTokenAmount(remaining)}
-                <span className="text-[13px] font-normal text-[#3a3a3a] ml-1.5">USDC</span>
+                <span className="text-[13px] font-normal text-[#888] ml-1.5">USDC</span>
               </p>
             </div>
             {stream?.active && (
@@ -272,13 +272,13 @@ export default function StreamCard({ stream, streamId, walletAddress, onRefresh 
         )}
 
         {!isEmployee && !isEmployer && (
-          <p className="text-[12px] text-[#2a2a2a]">Read-only view</p>
+          <p className="text-[12px] text-[#555]">Read-only view</p>
         )}
       </div>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
       {(actionState.error || lastTx) && (
-        <div className="border-t border-[#1a1a1a] px-5 py-3 space-y-1.5">
+        <div className="border-t border-[#222] px-5 py-3 space-y-1.5">
           {actionState.error && (
             <p className="text-[11px] text-red-400 break-all leading-relaxed">{actionState.error}</p>
           )}
@@ -314,15 +314,15 @@ function StatusPill({ active }) {
 function Stat({ label, value }) {
   return (
     <div>
-      <p className="text-[10px] font-medium uppercase tracking-wider text-[#3a3a3a] mb-0.5">{label}</p>
-      <p className="text-[12px] text-[#777] num">{value ?? '—'}</p>
+      <p className="text-[10px] font-medium uppercase tracking-wider text-[#888] mb-0.5">{label}</p>
+      <p className="text-[12px] text-[#999] num">{value ?? '—'}</p>
     </div>
   );
 }
 
 function ArrowRight() {
   return (
-    <svg className="w-4 h-4 text-[#252525] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg className="w-4 h-4 text-[#444] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
     </svg>
   );
